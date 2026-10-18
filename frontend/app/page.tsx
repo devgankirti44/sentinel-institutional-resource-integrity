@@ -246,7 +246,7 @@ const [burnData, setBurnData] = useState<any>(null);
 const [burnLoading, setBurnLoading] = useState(false);
 const [burnErr, setBurnErr] = useState("");
 
-  const API_BASE    = "http://127.0.0.1:8000/api";
+  const API_BASE = (process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000") + "/api";
   const unreadCount = notifications.filter(n => !n.is_read).length;
   const crisis      = !!(activeCase && activeCase.status !== "RESOLVED");
   const lowStock    = items.filter(i => i.current_stock <= i.reorder_level).length;
@@ -352,7 +352,7 @@ const [burnErr, setBurnErr] = useState("");
 
   useEffect(() => { fetchSystemData(); setMapReady(true); }, []);
  useEffect(() => {
-  const url = `http://localhost:8000/api/explorer/map/location-summary`;
+  const url = `${API_BASE}/explorer/map/location-summary`;
   console.log("🗺 Fetching map summaries from:", url);
   fetch(url)
     .then(r => {
@@ -918,7 +918,7 @@ const [burnErr, setBurnErr] = useState("");
                   <button
   onClick={() => {
   setLocSummLoading(true);
-  fetch(`http://localhost:8000/api/explorer/map/location-summary`)
+  fetch(`${API_BASE}/explorer/map/location-summary`)
     .then(r => r.json())
     .then(d => {
       setLocSummaries(d);
