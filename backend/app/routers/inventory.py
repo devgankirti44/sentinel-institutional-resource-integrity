@@ -174,6 +174,23 @@ def issue_resource(txn_data: schemas.TransactionCreate, db: Session = Depends(ge
             notes=txn_data.notes,
         )
 
+        # === SMART REORDER AGENT — fires after stock deducted ===
+        try:
+            pr = smart_reorder_agent(
+                db=db,
+                item_id=txn_data.item_id,
+                department_id=txn_data.department_id,
+            )
+            if pr:
+                noti = Notification(
+                    title="🤖 Auto-Reorder PR Created",
+                    message=f"Smart Reorder Agent created PR-{pr.id} for {pr.title}."
+                )
+                db.add(noti)
+                db.commit()
+        except Exception as agent_err:
+            print(f"[ReorderAgent] Non-fatal error: {agent_err}")
+
         # === DYNAMIC AUTO-TRIGGER AGENT ON DISPATCH ===
         case = detector.detect_item_anomaly(
             db, 
