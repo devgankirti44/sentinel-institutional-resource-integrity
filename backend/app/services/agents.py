@@ -18,19 +18,27 @@ def smart_reorder_agent(
 ) -> Optional[PurchaseRequisition]:
     item = db.query(Item).filter(Item.id == item_id).first()
     if not item:
+        print(f"[ReorderAgent] Item {item_id} not found")
         return None
 
+    print(f"[ReorderAgent] Item={item.name} stock={item.current_stock} reorder_level={item.reorder_level}")
+
     if item.current_stock > item.reorder_level:
+        print(f"[ReorderAgent] Stock {item.current_stock} > reorder {item.reorder_level} — skipping")
         return None
 
     dept_id = department_id or 1
 
     existing = db.query(PurchaseRequisition).filter(
         PurchaseRequisition.department_id == dept_id,
-        PurchaseRequisition.status.in_(["DRAFT", "PENDING", "PENDING_APPROVAL"]),
+        PurchaseRequisition.status.in_([
+            PRStatus.PENDING,
+            PRStatus.PENDING_APPROVAL,
+        ]),
         PurchaseRequisition.title.like(f"%Auto-Reorder%{item.name}%")
     ).first()
     if existing:
+        print(f"[ReorderAgent] Duplicate PR already exists for {item.name} — skipping")
         return None
 
     admin = db.query(User).filter(User.role == UserRole.SUPER_ADMIN).first()
@@ -40,7 +48,7 @@ def smart_reorder_agent(
     estimated   = reorder_qty * (item.unit_price or 0)
 
     pr = PurchaseRequisition(
-        title=f"Auto-Reorder: {item.name} × {reorder_qty}",
+        title=f"Auto-Reorder: {item.name} x {reorder_qty}",
         justification=(
             f"Smart Reorder Agent triggered. Stock fell to "
             f"{item.current_stock} {item.unit} "
@@ -55,24 +63,28 @@ def smart_reorder_agent(
     db.add(pr)
     db.commit()
     db.refresh(pr)
+    print(f"[ReorderAgent] PR-{pr.id} created successfully for {item.name}")
 
-    dept = db.query(Department).filter(Department.id == dept_id).first()
-    if dept:
-        hod = db.query(User).filter(
-            User.department_id == dept_id,
-            User.role == UserRole.DEPT_HEAD
-        ).first()
-        if hod and hod.email:
-            _email_hod_smart_reorder(
-                hod_email=hod.email,
-                hod_name=hod.full_name,
-                item_name=item.name,
-                current_stock=item.current_stock,
-                reorder_qty=reorder_qty,
-                unit=item.unit,
-                dept_name=dept.name,
-                pr_id=pr.id,
-            )
+    try:
+        dept = db.query(Department).filter(Department.id == dept_id).first()
+        if dept:
+            hod = db.query(User).filter(
+                User.department_id == dept_id,
+                User.role == UserRole.DEPT_HEAD
+            ).first()
+            if hod and hod.email:
+                _email_hod_smart_reorder(
+                    hod_email=hod.email,
+                    hod_name=hod.full_name,
+                    item_name=item.name,
+                    current_stock=item.current_stock,
+                    reorder_qty=reorder_qty,
+                    unit=item.unit,
+                    dept_name=dept.name,
+                    pr_id=pr.id,
+                )
+    except Exception as email_err:
+        print(f"[ReorderAgent] Email failed (non-fatal): {email_err}")
 
     return pr
 
@@ -83,7 +95,7 @@ def _email_hod_smart_reorder(
     reorder_qty: int, unit: str,
     dept_name: str, pr_id: int,
 ):
-    subject = f"[Sentinel] ⚠ Smart Reorder Alert — {item_name} is Low"
+    subject = f"[Sentinel] Smart Reorder Alert — {item_name} is Low"
     html = f"""
     <div style="font-family:Inter,sans-serif;background:#FAF9F6;color:#252525;
                 padding:32px;border-radius:12px;max-width:600px;
